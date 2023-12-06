@@ -1,5 +1,5 @@
 (defpackage #:defcss
-  (:use #:cl)
+  (:use #:cl #:iterate)
   (:export #:defcss #:make-file #:file->string #:*current-file*))
 (in-package #:defcss)
 
@@ -38,6 +38,36 @@
     (%make-style
       :value `(,file-name ,@body)
       :class dotless-name)))
+
+(defmacro-clause (for d in-style s)
+  "Iterate through a LASS style. Returns (k v) for properties and (k nil) for substyles"
+  (a:with-gensyms (l)
+    `(progn
+       (for ,l
+            :initially ,s
+            :then (if (listp (car ,l)) (cdr ,l) (cddr ,l)))
+       (while ,l)
+       (for ,d = ,l))))
+
+(defun merge-style-bodies (s1 s2)
+  "Merges style s1 with style s2. Both styles are simple LASS expressions, not `style` objects"
+  (iter (with res = s2)
+        (for (k v) in-style s1)
+
+        (if (not (listp k))
+          (setf (getf res k) v)
+          ;; TODO: merge sub-styles properly
+          ;; Also this is inefficient
+          (push k (cdr (last res))))
+
+        (finally (return res))))
+#+nil
+(merge-style-bodies
+  '(:background "red"
+    :color "white"
+    (substyle :hello 10 :world 20)
+    (another :test 20))
+  '((substyle :key 10)))
 
 (defun expand-style (name args-and-parents body)
   ;; TODO: Do something with args-and-parents
