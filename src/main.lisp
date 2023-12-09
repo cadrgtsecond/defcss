@@ -1,6 +1,6 @@
 (defpackage #:defcss
   (:use #:cl #:iterate)
-  (:export #:defcss #:make-file #:file->string #:*current-file*)
+  (:export #:defcss #:make-file #:file->string)
   (:local-nicknames (#:util #:serapeum/bundle)))
 (in-package #:defcss)
 
@@ -20,14 +20,11 @@
 (defsetf file-ref (style file) (val)
   `(setf (gethash ,style (file-styles ,file)) ,val))
 
-(defun file->string (&optional (file *current-file*))
+(defun file->string (file)
   (apply
     #'lass:compile-and-write
     (loop for style being the hash-values of (file-styles file)
           collect (style-value style))))
-
-(defparameter *current-file* (make-file))
-(declaim (type file *current-file*))
 
 (defstruct (style (:constructor %make-style))
   value
@@ -82,11 +79,12 @@
 (parse-args-and-parents '(parent1 parent2 (:opt "val") (:other "val")))
 
 (defun expand-style (name args parents body)
-  ;; TODO: Do something with args
-  (declare (ignore args))
-  (let ((style (make-style name body parents)))
+  (let ((file (cadr (assoc :in args)))
+        (style (make-style name body parents)))
+    (print file)
     `(progn
-       (setf (file-ref ',name *current-file*) ,style)
+       ,(when file
+          `(setf (file-ref ',name ,file) ,style))
        (defvar ,name)
        (setf ,name ,style))))
 
@@ -99,6 +97,8 @@
 
 ;;; Tests
 #+nil
+(defparameter *test-file* (make-file))
+#+nil
 (defcss test
   :background "red"
   :color "yellow")
@@ -109,7 +109,8 @@
   :flex-direction "row")
 
 #+nil
-(defcss (composed test flexing))
+;; This should be the only thing in *test-file*
+(defcss (composed test flexing (:in *test-file*)))
 
 #+nil
-(file->string *current-file*)
+(file->string *test-file*)
