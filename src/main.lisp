@@ -1,6 +1,6 @@
 (defpackage #:defcss
   (:use #:cl #:iterate)
-  (:export #:defcss #:make-file #:file->string)
+  (:export #:defcss #:make-file #:file->string #:style-name)
   (:local-nicknames (#:util #:serapeum/bundle)))
 (in-package #:defcss)
 
