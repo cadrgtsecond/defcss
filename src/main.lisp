@@ -1,6 +1,7 @@
 (defpackage #:defcss
   (:use #:cl #:iterate)
-  (:export #:defcss #:make-file #:file->string #:*current-file*))
+  (:export #:defcss #:make-file #:file->string #:*current-file*)
+  (:local-nicknames (#:util #:serapeum/bundle)))
 (in-package #:defcss)
 
 (let ((counter 0))
@@ -32,16 +33,21 @@
   value
   class)
 
-(defun make-style (name body)
+(defun make-style (name body parents)
   (multiple-value-bind (file-name dotless-name)
                        (unique-name (string-downcase (string name)))
     (%make-style
-      :value `(,file-name ,@body)
+      :value `(,file-name ,@(reduce #'merge-style-bodies
+                              (append
+                                (mapcar
+                                   (util:compose #'cdr #'style-value #'symbol-value)
+                                   parents)
+                                (list body))))
       :class dotless-name)))
 
 (defmacro-clause (for d in-style s)
   "Iterate through a LASS style. Returns (k v) for properties and (k nil) for substyles"
-  (a:with-gensyms (l)
+  (util:with-gensyms (l)
     `(progn
        (for ,l
             :initially ,s
@@ -69,22 +75,27 @@
     (another :test 20))
   '((substyle :key 10)))
 
-(defun expand-style (name args-and-parents body)
-  ;; TODO: Do something with args-and-parents
-  (declare (ignore args-and-parents))
-  (let ((style (make-style name body)))
+(defun parse-args-and-parents (a-and-p)
+  "Seperates arguments and parent styles from the list given to `defcss`. Return `args` and `parents`"
+  (util:partition #'listp a-and-p))
+#+nil
+(parse-args-and-parents '(parent1 parent2 (:opt "val") (:other "val")))
+
+(defun expand-style (name args parents body)
+  ;; TODO: Do something with args
+  (declare (ignore args))
+  (let ((style (make-style name body parents)))
     `(progn
        (setf (file-ref ',name *current-file*) ,style)
        (defvar ,name)
-       (setf ,name ,(style-class style)))))
+       (setf ,name ,style))))
 
 (defmacro defcss (name-and-args &body body)
   (if (not (listp name-and-args))
      `(defcss (,name-and-args) ,@body)
-      (expand-style
-        (car name-and-args)
-        (cdr name-and-args)
-        body)))
+      (multiple-value-bind (args parents)
+          (parse-args-and-parents (cdr name-and-args))
+        (expand-style (car name-and-args) args parents body))))
 
 ;;; Tests
 #+nil
@@ -93,9 +104,12 @@
   :color "yellow")
 
 #+nil
-(defcss other
-  :background "blue"
-  :color "white")
+(defcss flexing
+  :display "flex"
+  :flex-direction "row")
+
+#+nil
+(defcss (composed test flexing))
 
 #+nil
 (file->string *current-file*)

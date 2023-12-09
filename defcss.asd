@@ -4,7 +4,7 @@
   :description "Painless CSS with LASS"
   :author "Abhinav Krishna <abhinavkrishnacr2020@gmail.com>"
   :version "0.0.1"
-  :depends-on ("lass" "alexandria" "iterate")
+  :depends-on ("lass" "alexandria" "serapeum" "iterate")
   :components
   ((:module "src"
     :serial t
