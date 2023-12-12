@@ -79,14 +79,13 @@
 (parse-args-and-parents '(parent1 parent2 (:opt "val") (:other "val")))
 
 (defun expand-style (name args parents body)
-  (let ((file (cadr (assoc :in args)))
-        (style (make-style name body parents)))
-    (print file)
-    `(progn
-       ,(when file
-          `(setf (file-ref ',name ,file) ,style))
-       (defvar ,name)
-       (setf ,name ,style))))
+  (let ((file (cadr (assoc :in args))))
+    (util:once-only ((style `(make-style ',name ',body ',parents)))
+      `(progn
+         ,(when file
+            `(setf (file-ref ',name ,file) ,style))
+         (defvar ,name)
+         (setf ,name ,style)))))
 
 (defmacro defcss (name-and-args &body body)
   (if (not (listp name-and-args))
