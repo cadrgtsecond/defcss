@@ -1,6 +1,6 @@
 (defpackage #:defcss
   (:use #:cl #:iterate)
-  (:export #:defcss #:make-file #:file->string #:style-class)
+  (:export #:defcss #:make-css-file #:style-class #:style #:file->string #:file)
   (:local-nicknames (#:util #:serapeum/bundle)))
 (in-package #:defcss)
 
@@ -8,39 +8,45 @@
   (defun unique-name (original)
     "Generates a unique style name"
     (incf counter)
-    (let ((name (format nil "~a~a" original counter)))
-      (values (format nil ".~a" name) name))))
+    (values
+      (format nil ".~a~a" original counter)
+      (format nil "~a~a" original counter))))
 
-(defstruct file
+(defstruct (style (:constructor %make-style))
+  (value nil :type list)
+  (class nil :type string))
+
+(defun css-string (val)
+  "Converts a value to a nice-looking string(That isn't shouty case)"
+  (string-downcase (string val)))
+
+(defun make-style (name body &key parents mangle-p)
+  (multiple-value-bind (file-in-name class)
+      (if mangle-p
+        (unique-name (css-string name))
+        (values name (css-string name)))
+    (%make-style
+      :value `(,file-in-name
+                ,@(iter (for p :in parents)
+                        (reducing (cdr (style-value p))
+                                  :by #'merge-style-bodies
+                                  :into res)
+                        (finally (return (merge-style-bodies res body)))))
+      :class class)))
+
+(defstruct (file (:constructor make-css-file))
   "A css file containing css styles"
   (styles (make-hash-table) :type hash-table))
 
-(defun file-ref (style file)
+(util:defplace file-ref (style file)
   (gethash style (file-styles file)))
-(defsetf file-ref (style file) (val)
-  `(setf (gethash ,style (file-styles ,file)) ,val))
 
 (defun file->string (file)
+  "Convert a `file` to a string that may be served by a web server"
   (apply
     #'lass:compile-and-write
     (loop for style being the hash-values of (file-styles file)
           collect (style-value style))))
-
-(defstruct (style (:constructor %make-style))
-  value
-  class)
-
-(defun make-style (name body parents)
-  (multiple-value-bind (file-name dotless-name)
-                       (unique-name (string-downcase (string name)))
-    (%make-style
-      :value `(,file-name ,@(reduce #'merge-style-bodies
-                              (append
-                                (mapcar
-                                   (util:compose #'cdr #'style-value #'symbol-value)
-                                   parents)
-                                (list body))))
-      :class dotless-name)))
 
 (defmacro-clause (for d in-style s)
   "Iterate through a LASS style. Returns (k v) for properties and (k nil) for substyles"
@@ -72,31 +78,30 @@
     (another :test 20))
   '((substyle :key 10)))
 
-(defun parse-args-and-parents (a-and-p)
-  "Seperates arguments and parent styles from the list given to `defcss`. Return `args` and `parents`"
-  (util:partition #'listp a-and-p))
-#+nil
-(parse-args-and-parents '(parent1 parent2 (:opt "val") (:other "val")))
-
 (defun expand-style (name args parents body)
-  (let ((file (cadr (assoc :in args))))
-    (util:once-only ((style `(make-style ',name ',body ',parents)))
+  (let ((file (util:assocadr :in args))
+        (global-p (util:assocadr :global args)))
+    (when (and global-p (not file))
+      (error "Global css definitions require a file. Use :IN to specify one"))
+    (util:once-only ((style `(make-style
+                               ',name
+                               ',body
+                               :parents (list ,@parents)
+                               :mangle-p ,(not global-p))))
       `(progn
          ,(when file
             `(setf (file-ref ',name ,file) ,style))
-         (defvar ,name)
-         (setf ,name ,style)))))
+         ,(when (not global-p)
+            `(defparameter ,name ,style))))))
 
 (defmacro defcss (name-and-args &body body)
-  (if (not (listp name-and-args))
-     `(defcss (,name-and-args) ,@body)
-      (multiple-value-bind (args parents)
-          (parse-args-and-parents (cdr name-and-args))
-        (expand-style (car name-and-args) args parents body))))
+  (multiple-value-bind (args parents)
+      (util:partition #'listp (util:cdr-safe name-and-args))
+    (expand-style (util:ensure-car name-and-args) args parents body)))
 
 ;;; Tests
 #+nil
-(defparameter *test-file* (make-file))
+(defparameter *test-file* (make-css-file))
 #+nil
 (defcss test
   :background "red"
@@ -110,6 +115,10 @@
 #+nil
 ;; This should be the only thing in *test-file*
 (defcss (composed test flexing (:in *test-file*)))
+
+#+nil
+(defcss (:root (:global t) (:in *test-file*))
+  :--background-color "red")
 
 #+nil
 (file->string *test-file*)
